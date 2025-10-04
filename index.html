@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Declaração de Residência</title>
+  <style>
+    body {
+      display: flex;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      height: 100vh;
+    }
+    .sidebar {
+      width: 25%;
+      background: #f4f4f4;
+      padding: 6px;
+      border-right: 1px solid #ccc;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .sidebar h2 {
+      margin-top: 20px;
+      font-size: 18px;
+      text-align: center;
+    }
+    .sidebar input[type="text"] {
+      width: 90%;
+      padding: 6px;
+      margin-bottom: 10px;
+    }
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .checkbox-container label {
+      order: 2;
+      margin-left: 8px;
+    }
+    /* Para trocar a posição do texto "Declaração para o CRAS?" para o lado esquerdo do checkbox */
+    #cras-label {
+      display: flex;
+      align-items: center;
+    }
+    #cras-label input[type="checkbox"] {
+      order: 2;
+    }
+    #cras-label span {
+      order: 1;
+      margin-right: 8px;
+    }
+    /* Ajuste do input de texto para 90% do sidebar */
+    /* já ajustado pelo width: 90% */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    td {
+      padding: 6px;
+      cursor: pointer;
+    }
+    tr:hover {
+      background: #ddd;
+    }
+    .excluir-nomes {
+      margin-top: 15px;
+    }
+    .excluir-nomes h3 {
+      margin-bottom: 10px;
+    }
+    .excluir-nomes label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    button {
+      padding: 10px 15px;
+      font-size: 14px;
+      background: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2980b9;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>Emissão de Declaração de Residência</h2>
+    <input type="text" id="filtro" placeholder="Buscar paciente..." />
+    <div class="checkbox-container">
+      <input type="checkbox" id="cras" />
+      <label for="cras" id="cras-label"><span>Declaração para o CRAS?</span></label>
+    </div>
+    <table id="tabelaPacientes"></table>
+
+    <!-- Lista de nomes para inclusão/exclusão -->
+    <div class="excluir-nomes" id="listaNomes" style="display:none;">
+      <h3>Nomes incluídos na Declaração</h3>
+      <div id="nomesIncluidos"></div>
+    </div>
+  </div>
+  <div class="content">
+    <button id="gerarPDF">Gerar Declaração PDF</button>
+  </div>
+
+  <script src="dados.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+  <script>
+    const { jsPDF } = window.jspdf;
+    let pacienteSelecionado = null;
+    let nomesIncluidos = []; // array de objetos {nome: string, manter: boolean}
+    
+    const tabela = document.getElementById("tabelaPacientes");
+    const filtro = document.getElementById("filtro");
+    const checkCRAS = document.getElementById("cras");
+    const listaNomesDiv = document.getElementById("nomesIncluidos");
+    const listaContainer = document.getElementById("listaNomes");
+
+    // Função para renderizar tabela
+    function renderTabela(dados) {
+      tabela.innerHTML = "";
+      dados.forEach(p => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${p["NOME CIDADÃO"]}</td>`;
+        tr.onclick = () => {
+          pacienteSelecionado = p;
+          document.querySelectorAll("tr").forEach(el => el.style.background = "");
+          tr.style.background = "#b3d9ff";
+        };
+        tabela.appendChild(tr);
+      });
+    }
+
+    renderTabela(pacientes);
+
+    filtro.addEventListener("input", () => {
+      const txt = filtro.value.toLowerCase();
+      renderTabela(pacientes.filter(p => p["NOME CIDADÃO"].toLowerCase().includes(txt)));
+    });
+
+    // Atualizar lista de nomes incluídos
+    function atualizarListaNomes() {
+      listaNomesDiv.innerHTML = "";
+      nomesIncluidos.forEach((n, index) => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = n.manter;
+        checkbox.onchange = () => {
+          n.manter = checkbox.checked;
+        };
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(" " + n.nome));
+        listaNomesDiv.appendChild(label);
+      });
+    }
+
+    // Mostrar ou esconder lista de nomes
+    function toggleListaNomes() {
+      if (checkCRAS.checked) {
+        // Quando marcado, agrupa nomes
+        // Obter nomes do paciente atual
+        if (pacienteSelecionado) {
+          // Filtra nomes da mesma residência
+          const { "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": logradouro, "NÚMERO": numero, "COMPLEMENTO": compl, "BAIRRO": bairro } = pacienteSelecionado;
+          const nomes = pacientes
+            .filter(p => 
+              p["TIPO DE LOGRADOURO"] === tipo &&
+              p["LOGRADOURO"] === logradouro &&
+              p["NÚMERO"] === numero &&
+              p["COMPLEMENTO"] === compl &&
+              p["BAIRRO"] === bairro
+            )
+            .map(p => p["NOME CIDADÃO"]);
+          
+          // Atualiza array nomesIncluidos
+          nomesIncluidos = nomes.map(n => ({ nome: n, manter: true }));
+          
+          // Exibir lista
+          document.getElementById("excluirTitulo").style.display = "block";
+          document.getElementById("listaNomes").style.display = "block";
+          atualizarListaNomes();
+        }
+      } else {
+        // Quando desmarcado, esconde lista
+        document.getElementById("excluirTitulo").style.display = "none";
+        document.getElementById("listaNomes").style.display = "none";
+        nomesIncluidos = [];
+      }
+    }
+
+    // Evento para checkbox CRAS
+    document.getElementById("cras").addEventListener("change", toggleListaNomes);
+
+    // Adicionar um título para a lista de nomes
+    const tituloLista = document.createElement("h3");
+    tituloLista.id = "excluirTitulo";
+    tituloLista.innerText = "Nomes incluídos na Declaração";
+    tituloLista.style.display = "none";
+    document.querySelector(".excluir-nomes").insertBefore(tituloLista, listaNomesDiv);
+
+    // Ao selecionar paciente
+    document.getElementById("tabelaPacientes").addEventListener("click", () => {
+      if (pacienteSelecionado && checkCRAS.checked) {
+        // Atualizar lista ao selecionar novo paciente
+        toggleListaNomes();
+      }
+    });
+
+    document.getElementById("gerarPDF").addEventListener("click", async () => {
+      if (!pacienteSelecionado) {
+        alert("Selecione um paciente.");
+        return;
+      }
+
+      const pdfBytes = await fetch("dec.pdf").then(r => r.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+      const pages = pdfDoc.getPages();
+      const page = pages[0];
+      const { height } = page.getSize();
+
+      const nome = pacienteSelecionado["NOME CIDADÃO"];
+      const tipo = pacienteSelecionado["TIPO DE LOGRADOURO"];
+      const logradouro = pacienteSelecionado["LOGRADOURO"];
+      const numero = pacienteSelecionado["NÚMERO"];
+      const compl = pacienteSelecionado["COMPLEMENTO"];
+      const bairro = pacienteSelecionado["BAIRRO"];
+
+      // Se CRAS marcado, usar nomes selecionados na lista
+      let nomes = [nome];
+      if (checkCRAS.checked && nomesIncluidos.length > 0) {
+        nomes = nomesIncluidos.filter(n => n.manter).map(n => n.nome);
+      }
+
+      const nomesFinal = nomes.join(", ");
+
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+
+      function drawTextWrapped(txt, x, y, maxWidth, lineHeight=14) {
+        const words = txt.split(" ");
+        let line = "";
+        let offset = 0;
+        words.forEach((word,i) => {
+          const testLine = line + word + " ";
+          const width = font.widthOfTextAtSize(testLine, 12);
+          if (width > maxWidth && i > 0) {
+            page.drawText(line, { x, y: y - offset, size: 12, font });
+            line = word + " ";
+            offset += lineHeight;
+          } else {
+            line = testLine;
+          }
+        });
+        page.drawText(line, { x, y: y - offset, size: 12, font });
+      }
+
+      // Coordenadas ajustadas ao modelo (baseado no dec.pdf enviado)
+      drawTextWrapped("DECLARO QUE:", 70, height - 170, 400);
+      drawTextWrapped(nomesFinal, 70, height - 190, 400);
+      drawTextWrapped("RESIDE(M) NO SEGUINTE", 355, height - 220, 400);
+      drawTextWrapped("ENDEREÇO:", 70, height - 240, 400);
+      drawTextWrapped(`${tipo} ${logradouro}`, 160, height - 240, 400);
+      drawTextWrapped("Nº", 70, height - 260, 400);
+      drawTextWrapped(numero, 90, height - 260, 400);
+      drawTextWrapped("COMPLEMENTO:", 120, height - 260, 400);
+      drawTextWrapped(compl, 230, height - 260, 400);
+      drawTextWrapped("BAIRRO", 70, height - 280, 400);
+      drawTextWrapped(bairro, 130, height - 280, 400);
+      drawTextWrapped("SÃO JOSÉ DA LAPA-MG,", 160, height - 330, 400);
+      drawTextWrapped(".", 370, height - 330, 400);
+
+      // Data atual
+      const hoje = new Date();
+      const dataFormatada = hoje.toLocaleDateString("pt-BR");
+      page.drawText(dataFormatada, { x: 305, y: height - 330, size: 12, font });
+
+      const pdfBytesFinal = await pdfDoc.save();
+      const blob = new Blob([pdfBytesFinal], { type: "application/pdf" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "declaracao.pdf";
+      link.click();
+    });
+  </script>
+</body>
+</html>
