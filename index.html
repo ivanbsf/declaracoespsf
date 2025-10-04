@@ -37,7 +37,6 @@
       order: 2;
       margin-left: 8px;
     }
-    /* Para trocar a posição do texto "Declaração para o CRAS?" para o lado esquerdo do checkbox */
     #cras-label {
       display: flex;
       align-items: center;
@@ -49,8 +48,6 @@
       order: 1;
       margin-right: 8px;
     }
-    /* Ajuste do input de texto para 90% do sidebar */
-    /* já ajustado pelo width: 90% */
     table {
       width: 100%;
       border-collapse: collapse;
@@ -112,22 +109,25 @@
     <button id="gerarPDF">Gerar Declaração PDF</button>
   </div>
 
+  <!-- Bibliotecas carregadas -->
   <script src="dados.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.autotable.min.js"></script>
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
   <script>
     const { jsPDF } = window.jspdf;
+    const { PDFLib } = window; // Para usar PDFLib
     let pacienteSelecionado = null;
-    let nomesIncluidos = []; // array de objetos {nome: string, manter: boolean}
-    
+    let nomesIncluidos = [];
+
     const tabela = document.getElementById("tabelaPacientes");
     const filtro = document.getElementById("filtro");
     const checkCRAS = document.getElementById("cras");
     const listaNomesDiv = document.getElementById("nomesIncluidos");
     const listaContainer = document.getElementById("listaNomes");
 
-    // Função para renderizar tabela
+    // Renderiza tabela
     function renderTabela(dados) {
       tabela.innerHTML = "";
       dados.forEach(p => {
@@ -152,7 +152,7 @@
     // Atualizar lista de nomes incluídos
     function atualizarListaNomes() {
       listaNomesDiv.innerHTML = "";
-      nomesIncluidos.forEach((n, index) => {
+      nomesIncluidos.forEach((n) => {
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
@@ -169,10 +169,7 @@
     // Mostrar ou esconder lista de nomes
     function toggleListaNomes() {
       if (checkCRAS.checked) {
-        // Quando marcado, agrupa nomes
-        // Obter nomes do paciente atual
         if (pacienteSelecionado) {
-          // Filtra nomes da mesma residência
           const { "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": logradouro, "NÚMERO": numero, "COMPLEMENTO": compl, "BAIRRO": bairro } = pacienteSelecionado;
           const nomes = pacientes
             .filter(p => 
@@ -184,113 +181,111 @@
             )
             .map(p => p["NOME CIDADÃO"]);
           
-          // Atualiza array nomesIncluidos
           nomesIncluidos = nomes.map(n => ({ nome: n, manter: true }));
           
-          // Exibir lista
           document.getElementById("excluirTitulo").style.display = "block";
           document.getElementById("listaNomes").style.display = "block";
           atualizarListaNomes();
         }
       } else {
-        // Quando desmarcado, esconde lista
         document.getElementById("excluirTitulo").style.display = "none";
         document.getElementById("listaNomes").style.display = "none";
         nomesIncluidos = [];
       }
     }
 
-    // Evento para checkbox CRAS
     document.getElementById("cras").addEventListener("change", toggleListaNomes);
 
-    // Adicionar um título para a lista de nomes
+    // Cria o título na lista de nomes
     const tituloLista = document.createElement("h3");
     tituloLista.id = "excluirTitulo";
     tituloLista.innerText = "Nomes incluídos na Declaração";
     tituloLista.style.display = "none";
     document.querySelector(".excluir-nomes").insertBefore(tituloLista, listaNomesDiv);
 
-    // Ao selecionar paciente
+    // Evento ao clicar na tabela
     document.getElementById("tabelaPacientes").addEventListener("click", () => {
       if (pacienteSelecionado && checkCRAS.checked) {
-        // Atualizar lista ao selecionar novo paciente
         toggleListaNomes();
       }
     });
 
+    // Evento do botão gerar PDF
     document.getElementById("gerarPDF").addEventListener("click", async () => {
       if (!pacienteSelecionado) {
         alert("Selecione um paciente.");
         return;
       }
 
-      const pdfBytes = await fetch("dec.pdf").then(r => r.arrayBuffer());
-      const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
-      const pages = pdfDoc.getPages();
-      const page = pages[0];
-      const { height } = page.getSize();
+      try {
+        const pdfBytes = await fetch("dec.pdf").then(r => r.arrayBuffer());
+        const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+        const pages = pdfDoc.getPages();
+        const page = pages[0];
+        const { height } = page.getSize();
 
-      const nome = pacienteSelecionado["NOME CIDADÃO"];
-      const tipo = pacienteSelecionado["TIPO DE LOGRADOURO"];
-      const logradouro = pacienteSelecionado["LOGRADOURO"];
-      const numero = pacienteSelecionado["NÚMERO"];
-      const compl = pacienteSelecionado["COMPLEMENTO"];
-      const bairro = pacienteSelecionado["BAIRRO"];
+        // Carregar a fonte Helvetica padrão
+        const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
 
-      // Se CRAS marcado, usar nomes selecionados na lista
-      let nomes = [nome];
-      if (checkCRAS.checked && nomesIncluidos.length > 0) {
-        nomes = nomesIncluidos.filter(n => n.manter).map(n => n.nome);
+        const { "NOME CIDADÃO": nome, "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": logradouro, "NÚMERO": numero, "COMPLEMENTO": compl, "BAIRRO": bairro } = pacienteSelecionado;
+
+        // Lista de nomes
+        let nomes = [nome];
+        if (checkCRAS.checked && nomesIncluidos.length > 0) {
+          nomes = nomesIncluidos.filter(n => n.manter).map(n => n.nome);
+        }
+        const nomesFinal = nomes.join(", ");
+
+        const hoje = new Date();
+        const dataFormatada = hoje.toLocaleDateString("pt-BR");
+
+       const texto =
+  `DECLARO QUE: ${nomesFinal}, RESIDE NO SEGUINTE ENDEREÇO: ${tipo} ${logradouro}, Nº ${numero}, COMPLEMENTO ${compl}, BAIRRO ${bairro}, SÃO JOSÉ DA LAPA-MG E ESTÁ(ÃO) CADASTRADO(A)(S) NO PSF DOM PEDRO I, UNIDADE III, SITUADO NA RUA JOSÉ SABINO COELHO (ANTIGA RUA 8), N° 140, TEL: 2010-1188.\n` +
+  `\nSÃO JOSÉ DA LAPA-MG, ${dataFormatada} .`;
+
+        // Função para quebras e justificação do texto
+        function drawJustifiedText(txt, x, y, maxWidth, lineHeight=14) {
+          const words = txt.split(/\s+/);
+          let line = [];
+          let lineWidth = 0;
+          let offset = 0;
+          words.forEach((word, i) => {
+            const testLine = [...line, word].join(" ");
+            const testWidth = font.widthOfTextAtSize(testLine, 12);
+            if (testWidth > maxWidth && line.length > 0) {
+              // Desenha linha justificada
+              const spaceWidth = font.widthOfTextAtSize(" ", 12);
+              const extraSpace = (maxWidth - lineWidth) / (line.length - 1 || 1);
+              let xPos = x;
+              line.forEach((w, j) => {
+                page.drawText(w, { x: xPos, y: y - offset, size: 12, font });
+                xPos += font.widthOfTextAtSize(w, 12) + spaceWidth + (j < line.length - 1 ? extraSpace : 0);
+              });
+              offset += lineHeight;
+              line = [word];
+              lineWidth = font.widthOfTextAtSize(word, 12);
+            } else {
+              line = [...line, word];
+              lineWidth = testWidth;
+            }
+          });
+          // Última linha
+          page.drawText(line.join(" "), { x, y: y - offset, size: 12, font });
+        }
+
+        // Inserir o texto no PDF
+        drawJustifiedText(texto, 70, height - 170, 450);
+
+        const pdfBytesFinal = await pdfDoc.save();
+        const blob = new Blob([pdfBytesFinal], { type: "application/pdf" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "declaracao.pdf";
+        link.click();
+      } catch (err) {
+        console.error("Erro ao gerar PDF:", err);
+        alert("Erro ao gerar PDF. Verifique se o arquivo 'dec.pdf' está acessível.");
       }
-
-      const nomesFinal = nomes.join(", ");
-
-      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-
-      function drawTextWrapped(txt, x, y, maxWidth, lineHeight=14) {
-        const words = txt.split(" ");
-        let line = "";
-        let offset = 0;
-        words.forEach((word,i) => {
-          const testLine = line + word + " ";
-          const width = font.widthOfTextAtSize(testLine, 12);
-          if (width > maxWidth && i > 0) {
-            page.drawText(line, { x, y: y - offset, size: 12, font });
-            line = word + " ";
-            offset += lineHeight;
-          } else {
-            line = testLine;
-          }
-        });
-        page.drawText(line, { x, y: y - offset, size: 12, font });
-      }
-
-      // Coordenadas ajustadas ao modelo (baseado no dec.pdf enviado)
-      drawTextWrapped("DECLARO QUE:", 70, height - 170, 400);
-      drawTextWrapped(nomesFinal, 70, height - 190, 400);
-      drawTextWrapped("RESIDE(M) NO SEGUINTE", 355, height - 220, 400);
-      drawTextWrapped("ENDEREÇO:", 70, height - 240, 400);
-      drawTextWrapped(`${tipo} ${logradouro}`, 160, height - 240, 400);
-      drawTextWrapped("Nº", 70, height - 260, 400);
-      drawTextWrapped(numero, 90, height - 260, 400);
-      drawTextWrapped("COMPLEMENTO:", 120, height - 260, 400);
-      drawTextWrapped(compl, 230, height - 260, 400);
-      drawTextWrapped("BAIRRO", 70, height - 280, 400);
-      drawTextWrapped(bairro, 130, height - 280, 400);
-      drawTextWrapped("SÃO JOSÉ DA LAPA-MG,", 160, height - 330, 400);
-      drawTextWrapped(".", 370, height - 330, 400);
-
-      // Data atual
-      const hoje = new Date();
-      const dataFormatada = hoje.toLocaleDateString("pt-BR");
-      page.drawText(dataFormatada, { x: 305, y: height - 330, size: 12, font });
-
-      const pdfBytesFinal = await pdfDoc.save();
-      const blob = new Blob([pdfBytesFinal], { type: "application/pdf" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "declaracao.pdf";
-      link.click();
     });
   </script>
 </body>
