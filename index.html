@@ -72,8 +72,10 @@
     .content {
       flex: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
+      padding: 20px;
     }
     button {
       padding: 10px 15px;
@@ -83,9 +85,26 @@
       border: none;
       border-radius: 5px;
       cursor: pointer;
+      margin: 5px;
     }
     button:hover {
       background: #2980b9;
+    }
+    /* Estilo para o formulário de preenchimento manual */
+    #manualForm {
+      display: none;
+      margin-top: 15px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      background: #fff;
+      width: 90%;
+      max-width: 400px;
+    }
+    #manualForm input, #manualForm select {
+      width: 100%;
+      padding: 6px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
     }
   </style>
 </head>
@@ -98,7 +117,6 @@
       <label for="cras" id="cras-label"><span>Declaração para o CRAS?</span></label>
     </div>
     <table id="tabelaPacientes"></table>
-
     <!-- Lista de nomes para inclusão/exclusão -->
     <div class="excluir-nomes" id="listaNomes" style="display:none;">
       <h3>Nomes incluídos na Declaração</h3>
@@ -106,7 +124,37 @@
     </div>
   </div>
   <div class="content">
-    <button id="gerarPDF">Gerar Declaração PDF</button>
+    <!-- Botão para preencher manualmente -->
+    <button id="preencherManual">Preencher Manualmente</button>
+    <!-- Formulário de preenchimento manual, inicialmente escondido -->
+    <div id="manualForm">
+      <h3>Preencher Endereço Manualmente</h3>
+      <label>Nome:</label>
+      <input type="text" id="manualNome" />
+      <label>Tipo de Logradouro:</label>
+      <select id="manualTipo">
+        <option value="">SELECIONE</option>
+        <option value="RUA">RUA</option>
+        <option value="AVENIDA">AVENIDA</option>
+        <option value="ALAMEDA">ALAMEDA</option>
+        <option value="BECO">BECO</option>
+        <!-- adicione outras opções se desejar -->
+      </select>
+      <label>Logradouro:</label>
+      <input type="text" id="manualLogradouro" />
+      <label>Nº:</label>
+      <input type="text" id="manualNumero" />
+      <label>Complemento:</label>
+      <input type="text" id="manualComplemento" />
+      <label>Bairro:</label>
+      <select id="manualBairro">
+        <option value="DOM PEDRO I">DOM PEDRO I</option>
+        <option value="QUINTA DOS IPÊS">QUINTA DOS IPÊS</option>
+      </select> 
+      <button id="salvarManual">Salvar Paciente</button>
+    </div>
+    <!-- Botão para gerar a declaração -->
+    <button id="gerarPDF">Gerar Declaração</button>
   </div>
 
   <!-- Bibliotecas carregadas -->
@@ -126,6 +174,9 @@
     const checkCRAS = document.getElementById("cras");
     const listaNomesDiv = document.getElementById("nomesIncluidos");
     const listaContainer = document.getElementById("listaNomes");
+    const btnPreencherManual = document.getElementById("preencherManual");
+    const manualForm = document.getElementById("manualForm");
+    const btnSalvarManual = document.getElementById("salvarManual");
 
     // Renderiza tabela
     function renderTabela(dados) {
@@ -210,10 +261,50 @@
       }
     });
 
-    // Evento do botão gerar PDF
+    // Event listener para botão "Preencher Manualmente"
+    document.getElementById("preencherManual").addEventListener("click", () => {
+      manualForm.style.display = manualForm.style.display === "none" ? "block" : "none";
+    });
+
+    // Evento para salvar endereço manual
+    document.getElementById("salvarManual").addEventListener("click", () => {
+      const nome = document.getElementById("manualNome").value.trim();
+      const tipo = document.getElementById("manualTipo").value.trim();
+      const logradouro = document.getElementById("manualLogradouro").value.trim();
+      const numero = document.getElementById("manualNumero").value.trim();
+      const compl = document.getElementById("manualComplemento").value.trim();
+      const bairro = document.getElementById("manualBairro").value.trim();
+
+      if (!nome || !tipo || !logradouro || !numero || !bairro) {
+        alert("Preencha todos os campos obrigatórios!");
+        return;
+      }
+
+      // Cria um objeto paciente fictício para usar na declaração
+      pacienteSelecionado = {
+        "NOME CIDADÃO": nome,
+        "TIPO DE LOGRADOURO": tipo,
+        "LOGRADOURO": logradouro,
+        "NÚMERO": numero,
+        "COMPLEMENTO": compl,
+        "BAIRRO": bairro
+      };
+      // Limpa os campos
+      document.getElementById("manualNome").value = "";
+      document.getElementById("manualTipo").value = "";
+      document.getElementById("manualLogradouro").value = "";
+      document.getElementById("manualNumero").value = "";
+      document.getElementById("manualComplemento").value = "";
+      document.getElementById("manualBairro").value = "";
+      
+      alert("Endereço preenchido manualmente. Agora você pode gerar a declaração.");
+      manualForm.style.display = "none";
+    });
+
+    // Evento do botão "Gerar Declaração"
     document.getElementById("gerarPDF").addEventListener("click", async () => {
       if (!pacienteSelecionado) {
-        alert("Selecione um paciente.");
+        alert("Selecione um paciente ou preencha manualmente.");
         return;
       }
 
@@ -224,12 +315,12 @@
         const page = pages[0];
         const { height } = page.getSize();
 
-        // Carregar a fonte Helvetica padrão
+        // Carregar fonte padrão
         const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
 
         const { "NOME CIDADÃO": nome, "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": logradouro, "NÚMERO": numero, "COMPLEMENTO": compl, "BAIRRO": bairro } = pacienteSelecionado;
 
-        // Lista de nomes
+        // Nomes na declaração
         let nomes = [nome];
         if (checkCRAS.checked && nomesIncluidos.length > 0) {
           nomes = nomesIncluidos.filter(n => n.manter).map(n => n.nome);
@@ -239,11 +330,11 @@
         const hoje = new Date();
         const dataFormatada = hoje.toLocaleDateString("pt-BR");
 
-       const texto =
-  `DECLARO QUE: ${nomesFinal}, RESIDE NO SEGUINTE ENDEREÇO: ${tipo} ${logradouro}, Nº ${numero}, COMPLEMENTO ${compl}, BAIRRO ${bairro}, SÃO JOSÉ DA LAPA-MG E ESTÁ(ÃO) CADASTRADO(A)(S) NO PSF DOM PEDRO I, UNIDADE III, SITUADO NA RUA JOSÉ SABINO COELHO (ANTIGA RUA 8), N° 140, TEL: 2010-1188.\n` +
-  `\nSÃO JOSÉ DA LAPA-MG, ${dataFormatada} .`;
+        const texto =
+`DECLARO QUE: ${nomesFinal}, RESIDE NO SEGUINTE ENDEREÇO: ${tipo} ${logradouro}, Nº ${numero}, COMPLEMENTO ${compl}, BAIRRO ${bairro}, SÃO JOSÉ DA LAPA-MG E ESTÁ(ÃO) CADASTRADO(A)(S) NO PSF DOM PEDRO I, UNIDADE III, SITUADO NA RUA JOSÉ SABINO COELHO (ANTIGA RUA 8), N° 140, TEL: 2010-1188.
+\n\nSÃO JOSÉ DA LAPA-MG, ${dataFormatada} .`;
 
-        // Função para quebras e justificação do texto
+        // Desenhar o texto na página
         function drawJustifiedText(txt, x, y, maxWidth, lineHeight=14) {
           const words = txt.split(/\s+/);
           let line = [];
@@ -253,7 +344,6 @@
             const testLine = [...line, word].join(" ");
             const testWidth = font.widthOfTextAtSize(testLine, 12);
             if (testWidth > maxWidth && line.length > 0) {
-              // Desenha linha justificada
               const spaceWidth = font.widthOfTextAtSize(" ", 12);
               const extraSpace = (maxWidth - lineWidth) / (line.length - 1 || 1);
               let xPos = x;
@@ -273,18 +363,20 @@
           page.drawText(line.join(" "), { x, y: y - offset, size: 12, font });
         }
 
-        // Inserir o texto no PDF
         drawJustifiedText(texto, 70, height - 170, 450);
 
         const pdfBytesFinal = await pdfDoc.save();
+
+        // Abrir em nova aba para impressão
         const blob = new Blob([pdfBytesFinal], { type: "application/pdf" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "declaracao.pdf";
-        link.click();
+        const url = URL.createObjectURL(blob);
+        const novaJanela = window.open(url);
+        novaJanela.onload = () => {
+          novaJanela.print();
+        };
       } catch (err) {
-        console.error("Erro ao gerar PDF:", err);
-        alert("Erro ao gerar PDF. Verifique se o arquivo 'dec.pdf' está acessível.");
+        console.error("Erro ao gerar declaração:", err);
+        alert("Erro ao gerar a declaração. Verifique se o arquivo 'dec.pdf' está acessível.");
       }
     });
   </script>
