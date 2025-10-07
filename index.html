@@ -9,6 +9,7 @@
       font-family: Arial, sans-serif;
       margin: 0;
       height: 100vh;
+      overflow: hidden;
     }
     .sidebar {
       width: 25%;
@@ -17,6 +18,7 @@
       border-right: 1px solid #ccc;
       overflow-y: auto;
       box-sizing: border-box;
+      display: none; /* oculta até descriptografar */
     }
     .sidebar h2 {
       margin-top: 20px;
@@ -34,19 +36,7 @@
       margin-bottom: 10px;
     }
     .checkbox-container label {
-      order: 2;
       margin-left: 8px;
-    }
-    #cras-label {
-      display: flex;
-      align-items: center;
-    }
-    #cras-label input[type="checkbox"] {
-      order: 2;
-    }
-    #cras-label span {
-      order: 1;
-      margin-right: 8px;
     }
     table {
       width: 100%;
@@ -76,6 +66,7 @@
       align-items: center;
       justify-content: flex-start;
       padding: 20px;
+      display: none; /* oculta até descriptografar */
     }
     button {
       padding: 10px 15px;
@@ -90,7 +81,6 @@
     button:hover {
       background: #2980b9;
     }
-    /* Estilo para o formulário de preenchimento manual */
     #manualForm {
       display: none;
       margin-top: 15px;
@@ -100,33 +90,56 @@
       width: 90%;
       max-width: 400px;
     }
-    #manualForm input, #manualForm select {
-      width: 100%;
-      padding: 6px;
-      margin-bottom: 10px;
-      box-sizing: border-box;
+    /* Tela de senha */
+    #loginScreen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #111;
+      color: white;
+      z-index: 999;
+    }
+    #loginScreen input {
+      padding: 8px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
+  <!-- Tela de senha -->
+  <div id="loginScreen">
+    <h2>🔒 Acesso Restrito</h2>
+    <p>Digite a senha para descriptografar os dados</p>
+    <input type="password" id="senha" placeholder="Senha de acesso" />
+    <button id="carregar">Desbloquear</button>
+    <p id="status" style="color: #ccc; margin-top: 10px;"></p>
+  </div>
+
+  <!-- Interface principal -->
   <div class="sidebar">
     <h2>Emissão de Declaração de Residência</h2>
     <input type="text" id="filtro" placeholder="Buscar paciente..." />
     <div class="checkbox-container">
       <input type="checkbox" id="cras" />
-      <label for="cras" id="cras-label"><span>Declaração para o CRAS?</span></label>
+      <label for="cras"><span>Declaração para o CRAS?</span></label>
     </div>
     <table id="tabelaPacientes"></table>
-    <!-- Lista de nomes para inclusão/exclusão -->
     <div class="excluir-nomes" id="listaNomes" style="display:none;">
       <h3>Nomes incluídos na Declaração</h3>
       <div id="nomesIncluidos"></div>
     </div>
   </div>
+
   <div class="content">
-    <!-- Botão para preencher manualmente -->
     <button id="preencherManual">Preencher Manualmente</button>
-    <!-- Formulário de preenchimento manual, inicialmente escondido -->
+
     <div id="manualForm">
       <h3>Preencher Endereço Manualmente</h3>
       <label>Nome:</label>
@@ -138,7 +151,6 @@
         <option value="AVENIDA">AVENIDA</option>
         <option value="ALAMEDA">ALAMEDA</option>
         <option value="BECO">BECO</option>
-        <!-- adicione outras opções se desejar -->
       </select>
       <label>Logradouro:</label>
       <input type="text" id="manualLogradouro" />
@@ -150,235 +162,247 @@
       <select id="manualBairro">
         <option value="DOM PEDRO I">DOM PEDRO I</option>
         <option value="QUINTA DOS IPÊS">QUINTA DOS IPÊS</option>
-      </select> 
+      </select>
       <button id="salvarManual">Salvar Paciente</button>
     </div>
-    <!-- Botão para gerar a declaração -->
+
     <button id="gerarPDF">Gerar Declaração</button>
   </div>
 
-  <!-- Bibliotecas carregadas -->
-  <script src="dados.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.autotable.min.js"></script>
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
 
   <script>
-    const { jsPDF } = window.jspdf;
-    const { PDFLib } = window; // Para usar PDFLib
-    let pacienteSelecionado = null;
-    let nomesIncluidos = [];
+  // =====================
+  // SEÇÃO 1: DESCRIPTOGRAFIA
+  // =====================
+  let pacientes = [];
 
-    const tabela = document.getElementById("tabelaPacientes");
-    const filtro = document.getElementById("filtro");
-    const checkCRAS = document.getElementById("cras");
-    const listaNomesDiv = document.getElementById("nomesIncluidos");
-    const listaContainer = document.getElementById("listaNomes");
-    const btnPreencherManual = document.getElementById("preencherManual");
-    const manualForm = document.getElementById("manualForm");
-    const btnSalvarManual = document.getElementById("salvarManual");
+  document.getElementById("carregar").addEventListener("click", async () => {
+    const senha = document.getElementById("senha").value.trim();
+    const status = document.getElementById("status");
+    if (!senha) return alert("Digite a senha.");
 
-    // Renderiza tabela
-    function renderTabela(dados) {
-      tabela.innerHTML = "";
-      dados.forEach(p => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${p["NOME CIDADÃO"]}</td>`;
-        tr.onclick = () => {
-          pacienteSelecionado = p;
-          document.querySelectorAll("tr").forEach(el => el.style.background = "");
-          tr.style.background = "#b3d9ff";
-        };
-        tabela.appendChild(tr);
-      });
+    status.textContent = "Descriptografando...";
+
+    try {
+      const res = await fetch("dados_encrypted.txt");
+      const base64Str = await res.text();
+
+      const encryptedBytes = Uint8Array.from(atob(base64Str), c => c.charCodeAt(0));
+      const salt = encryptedBytes.slice(0, 16);
+      const iv = encryptedBytes.slice(16, 32);
+      const ciphertext = encryptedBytes.slice(32);
+
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(senha),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
+
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 1000000,
+          hash: "SHA-256"
+        },
+        keyMaterial,
+        { name: "AES-CBC", length: 256 },
+        false,
+        ["decrypt"]
+      );
+
+      const decryptedBuffer = await crypto.subtle.decrypt({ name: "AES-CBC", iv: iv }, key, ciphertext);
+      const decoder = new TextDecoder();
+      const plaintext = decoder.decode(decryptedBuffer);
+
+      let cleaned = plaintext.trim();
+
+// Se o texto começa com "const pacientes", remove até o início do array
+if (cleaned.startsWith("const pacientes")) {
+  const start = cleaned.indexOf("[");
+  const end = cleaned.lastIndexOf("]");
+  cleaned = cleaned.substring(start, end + 1);
+}
+
+pacientes = JSON.parse(cleaned); // converte para objeto JS
+
+      // Remove a tela de login e exibe o conteúdo
+      document.getElementById("loginScreen").remove();
+      document.querySelector(".sidebar").style.display = "block";
+      document.querySelector(".content").style.display = "flex";
+
+      inicializarSistema(); // ativa o restante do código
+
+    } catch (e) {
+      console.error(e);
+      status.textContent = "Erro: senha incorreta ou arquivo inválido.";
     }
+  });
 
-    renderTabela(pacientes);
+  // =====================
+  // SEÇÃO 2: SISTEMA PRINCIPAL (ativa após descriptografia)
+  // =====================
+  function inicializarSistema() {
+  let pacienteSelecionado = null;
+  let nomesIncluidos = [];
 
-    filtro.addEventListener("input", () => {
-      const txt = filtro.value.toLowerCase();
-      renderTabela(pacientes.filter(p => p["NOME CIDADÃO"].toLowerCase().includes(txt)));
-    });
+  const tabela = document.getElementById("tabelaPacientes");
+  const filtro = document.getElementById("filtro");
+  const checkCRAS = document.getElementById("cras");
+  const listaNomesDiv = document.getElementById("nomesIncluidos");
+  const btnGerarPDF = document.getElementById("gerarPDF");
+  const manualNome = document.getElementById("manualNome");
+  const manualTipo = document.getElementById("manualTipo");
+  const manualLogradouro = document.getElementById("manualLogradouro");
+  const manualNumero = document.getElementById("manualNumero");
+  const manualComplemento = document.getElementById("manualComplemento");
+  const manualBairro = document.getElementById("manualBairro");
 
-    // Atualizar lista de nomes incluídos
-    function atualizarListaNomes() {
-      listaNomesDiv.innerHTML = "";
-      nomesIncluidos.forEach((n) => {
-        const label = document.createElement("label");
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = n.manter;
-        checkbox.onchange = () => {
-          n.manter = checkbox.checked;
-        };
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(" " + n.nome));
-        listaNomesDiv.appendChild(label);
-      });
-    }
-
-    // Mostrar ou esconder lista de nomes
-    function toggleListaNomes() {
-      if (checkCRAS.checked) {
-        if (pacienteSelecionado) {
-          const { "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": logradouro, "NÚMERO": numero, "COMPLEMENTO": compl, "BAIRRO": bairro } = pacienteSelecionado;
-          const nomes = pacientes
-            .filter(p => 
-              p["TIPO DE LOGRADOURO"] === tipo &&
-              p["LOGRADOURO"] === logradouro &&
-              p["NÚMERO"] === numero &&
-              p["COMPLEMENTO"] === compl &&
-              p["BAIRRO"] === bairro
-            )
-            .map(p => p["NOME CIDADÃO"]);
-          
-          nomesIncluidos = nomes.map(n => ({ nome: n, manter: true }));
-          
-          document.getElementById("excluirTitulo").style.display = "block";
-          document.getElementById("listaNomes").style.display = "block";
-          atualizarListaNomes();
-        }
-      } else {
-        document.getElementById("excluirTitulo").style.display = "none";
-        document.getElementById("listaNomes").style.display = "none";
-        nomesIncluidos = [];
-      }
-    }
-
-    document.getElementById("cras").addEventListener("change", toggleListaNomes);
-
-    // Cria o título na lista de nomes
-    const tituloLista = document.createElement("h3");
-    tituloLista.id = "excluirTitulo";
-    tituloLista.innerText = "Nomes incluídos na Declaração";
-    tituloLista.style.display = "none";
-    document.querySelector(".excluir-nomes").insertBefore(tituloLista, listaNomesDiv);
-
-    // Evento ao clicar na tabela
-    document.getElementById("tabelaPacientes").addEventListener("click", () => {
-      if (pacienteSelecionado && checkCRAS.checked) {
-        toggleListaNomes();
-      }
-    });
-
-    // Event listener para botão "Preencher Manualmente"
-    document.getElementById("preencherManual").addEventListener("click", () => {
-      manualForm.style.display = manualForm.style.display === "none" ? "block" : "none";
-    });
-
-    // Evento para salvar endereço manual
-    document.getElementById("salvarManual").addEventListener("click", () => {
-      const nome = document.getElementById("manualNome").value.trim();
-      const tipo = document.getElementById("manualTipo").value.trim();
-      const logradouro = document.getElementById("manualLogradouro").value.trim();
-      const numero = document.getElementById("manualNumero").value.trim();
-      const compl = document.getElementById("manualComplemento").value.trim();
-      const bairro = document.getElementById("manualBairro").value.trim();
-
-      if (!nome || !tipo || !logradouro || !numero || !bairro) {
-        alert("Preencha todos os campos obrigatórios!");
-        return;
-      }
-
-      // Cria um objeto paciente fictício para usar na declaração
-      pacienteSelecionado = {
-        "NOME CIDADÃO": nome,
-        "TIPO DE LOGRADOURO": tipo,
-        "LOGRADOURO": logradouro,
-        "NÚMERO": numero,
-        "COMPLEMENTO": compl,
-        "BAIRRO": bairro
+  function renderTabela(dados) {
+    tabela.innerHTML = "";
+    dados.forEach(p => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${p["NOME CIDADÃO"]}</td>`;
+      tr.onclick = () => {
+        pacienteSelecionado = p;
+        document.querySelectorAll("tr").forEach(el => (el.style.background = ""));
+        tr.style.background = "#b3d9ff";
+        if (checkCRAS.checked) toggleListaNomes();
       };
-      // Limpa os campos
-      document.getElementById("manualNome").value = "";
-      document.getElementById("manualTipo").value = "";
-      document.getElementById("manualLogradouro").value = "";
-      document.getElementById("manualNumero").value = "";
-      document.getElementById("manualComplemento").value = "";
-      document.getElementById("manualBairro").value = "";
+      tabela.appendChild(tr);
+    });
+  }
+
+  renderTabela(pacientes);
+
+  // Filtros
+  document.getElementById("filtro").addEventListener("input", () => {
+    const txt = document.getElementById("filtro").value.toLowerCase();
+    renderTabela(pacientes.filter(p => p["NOME CIDADÃO"].toLowerCase().includes(txt)));
+  });
+
+  // Lista de nomes incluídos
+  function toggleListaNomes() {
+    if (!pacienteSelecionado) return;
+    const { "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": log, "NÚMERO": num, "COMPLEMENTO": comp, "BAIRRO": bairro } = pacienteSelecionado;
+    const nomes = pacientes.filter(p =>
+      p["TIPO DE LOGRADOURO"] === tipo &&
+      p["LOGRADOURO"] === log &&
+      p["NÚMERO"] === num &&
+      p["COMPLEMENTO"] === comp &&
+      p["BAIRRO"] === bairro
+    ).map(p => p["NOME CIDADÃO"]);
+
+    nomesIncluidos = nomes.map(n => ({ nome: n, manter: true }));
+    const lista = document.getElementById("nomesIncluidos");
+    lista.innerHTML = "";
+    nomesIncluidos.forEach(n => {
+      const lbl = document.createElement("label");
+      const chk = document.createElement("input");
+      chk.type = "checkbox"; chk.checked = true;
+      chk.onchange = () => (n.manter = chk.checked);
+      lbl.append(chk, " ", n.nome);
+      lista.appendChild(lbl);
+    });
+    document.getElementById("listaNomes").style.display = "block";
+  }
+
+  checkCRAS.addEventListener("change", toggleListaNomes);
+
+  // Preencher manual
+  document.getElementById("preencherManual").addEventListener("click", () => {
+    document.getElementById("manualForm").style.display =
+      document.getElementById("manualForm").style.display === "none" ? "block" : "none";
+  });
+
+  // Salvar manual
+  document.getElementById("salvarManual").addEventListener("click", () => {
+    const nome = manualNome.value.trim();
+    if (!nome) return alert("Preencha o nome!");
+    pacienteSelecionado = {
+      "NOME CIDADÃO": nome,
+      "TIPO DE LOGRADOURO": manualTipo.value.trim(),
+      "LOGRADOURO": manualLogradouro.value.trim(),
+      "NÚMERO": manualNumero.value.trim(),
+      "COMPLEMENTO": manualComplemento.value.trim(),
+      "BAIRRO": manualBairro.value
+    };
+    document.getElementById("manualForm").style.display = "none";
+    alert("Dados inseridos manualmente!");
+  });
+
+  // Gerar PDF
+  btnGerarPDF.addEventListener("click", async () => {
+    if (!pacienteSelecionado) return alert("Selecione um paciente.");
+
+    try {
+      const pdfBytes = await fetch("dec.pdf").then(r => r.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+      const page = pdfDoc.getPages()[0];
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const { height } = page.getSize();
+
+      const { "NOME CIDADÃO": nome, "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": log, "NÚMERO": num, "COMPLEMENTO": comp, "BAIRRO": bairro } = pacienteSelecionado;
+
+      let nomes = [nome];
+      if (document.getElementById("cras").checked && nomesIncluidos.length > 0)
+        nomes = nomesIncluidos.filter(n => n.manter).map(n => n.nome);
+
+      const nomesFinal = nomes.join(", ");
+      const dataFormatada = new Date().toLocaleDateString("pt-BR");
+      const texto = `DECLARO QUE: ${nomesFinal}, RESIDE NO SEGUINTE ENDEREÇO: ${tipo} ${log}, Nº ${num}, COMPLEMENTO ${comp}, BAIRRO ${bairro}, SÃO JOSÉ DA LAPA-MG E ESTÁ(ÃO) CADASTRADO(A)(S) NO PSF DOM PEDRO I, UNIDADE III, SITUADO NA RUA JOSÉ SABINO COELHO (ANTIGA RUA 8), N° 140, TEL: 2010-1188.
       
-      alert("Endereço preenchido manualmente. Agora você pode gerar a declaração.");
-      manualForm.style.display = "none";
-    });
+SÃO JOSÉ DA LAPA-MG, ${dataFormatada}.`;
 
-    // Evento do botão "Gerar Declaração"
-    document.getElementById("gerarPDF").addEventListener("click", async () => {
-      if (!pacienteSelecionado) {
-        alert("Selecione um paciente ou preencha manualmente.");
-        return;
+      // Desenho do texto justificado
+      function drawJustifiedText(txt, x, y, maxWidth, lineHeight = 14) {
+        const words = txt.split(/\s+/);
+        let line = [];
+        let lineWidth = 0;
+        let offset = 0;
+        words.forEach((word, i) => {
+          const testLine = [...line, word].join(" ");
+          const testWidth = font.widthOfTextAtSize(testLine, 12);
+          if (testWidth > maxWidth && line.length > 0) {
+            const spaceWidth = font.widthOfTextAtSize(" ", 12);
+            const extraSpace = (maxWidth - lineWidth) / (line.length - 1 || 1);
+            let xPos = x;
+            line.forEach((w, j) => {
+              page.drawText(w, { x: xPos, y: y - offset, size: 12, font });
+              xPos += font.widthOfTextAtSize(w, 12) + spaceWidth + (j < line.length - 1 ? extraSpace : 0);
+            });
+            offset += lineHeight;
+            line = [word];
+            lineWidth = font.widthOfTextAtSize(word, 12);
+          } else {
+            line.push(word);
+            lineWidth = testWidth;
+          }
+        });
+        // Última linha
+        page.drawText(line.join(" "), { x, y: y - offset, size: 12, font });
       }
 
-      try {
-        const pdfBytes = await fetch("dec.pdf").then(r => r.arrayBuffer());
-        const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
-        const pages = pdfDoc.getPages();
-        const page = pages[0];
-        const { height } = page.getSize();
+      drawJustifiedText(texto, 70, height - 170, 450);
 
-        // Carregar fonte padrão
-        const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const pdfBytesFinal = await pdfDoc.save();
 
-        const { "NOME CIDADÃO": nome, "TIPO DE LOGRADOURO": tipo, "LOGRADOURO": logradouro, "NÚMERO": numero, "COMPLEMENTO": compl, "BAIRRO": bairro } = pacienteSelecionado;
-
-        // Nomes na declaração
-        let nomes = [nome];
-        if (checkCRAS.checked && nomesIncluidos.length > 0) {
-          nomes = nomesIncluidos.filter(n => n.manter).map(n => n.nome);
-        }
-        const nomesFinal = nomes.join(", ");
-
-        const hoje = new Date();
-        const dataFormatada = hoje.toLocaleDateString("pt-BR");
-
-        const texto =
-`DECLARO QUE: ${nomesFinal}, RESIDE NO SEGUINTE ENDEREÇO: ${tipo} ${logradouro}, Nº ${numero}, COMPLEMENTO ${compl}, BAIRRO ${bairro}, SÃO JOSÉ DA LAPA-MG E ESTÁ(ÃO) CADASTRADO(A)(S) NO PSF DOM PEDRO I, UNIDADE III, SITUADO NA RUA JOSÉ SABINO COELHO (ANTIGA RUA 8), N° 140, TEL: 2010-1188.
-\n\nSÃO JOSÉ DA LAPA-MG, ${dataFormatada} .`;
-
-        // Desenhar o texto na página
-        function drawJustifiedText(txt, x, y, maxWidth, lineHeight=14) {
-          const words = txt.split(/\s+/);
-          let line = [];
-          let lineWidth = 0;
-          let offset = 0;
-          words.forEach((word, i) => {
-            const testLine = [...line, word].join(" ");
-            const testWidth = font.widthOfTextAtSize(testLine, 12);
-            if (testWidth > maxWidth && line.length > 0) {
-              const spaceWidth = font.widthOfTextAtSize(" ", 12);
-              const extraSpace = (maxWidth - lineWidth) / (line.length - 1 || 1);
-              let xPos = x;
-              line.forEach((w, j) => {
-                page.drawText(w, { x: xPos, y: y - offset, size: 12, font });
-                xPos += font.widthOfTextAtSize(w, 12) + spaceWidth + (j < line.length - 1 ? extraSpace : 0);
-              });
-              offset += lineHeight;
-              line = [word];
-              lineWidth = font.widthOfTextAtSize(word, 12);
-            } else {
-              line = [...line, word];
-              lineWidth = testWidth;
-            }
-          });
-          // Última linha
-          page.drawText(line.join(" "), { x, y: y - offset, size: 12, font });
-        }
-
-        drawJustifiedText(texto, 70, height - 170, 450);
-
-        const pdfBytesFinal = await pdfDoc.save();
-
-        // Abrir em nova aba para impressão
-        const blob = new Blob([pdfBytesFinal], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const novaJanela = window.open(url);
-        novaJanela.onload = () => {
-          novaJanela.print();
-        };
-      } catch (err) {
-        console.error("Erro ao gerar declaração:", err);
-        alert("Erro ao gerar a declaração. Verifique se o arquivo 'dec.pdf' está acessível.");
+      // Abrir em nova aba
+      const blob = new Blob([pdfBytesFinal], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const novaJanela = window.open(url);
+      if (novaJanela) {
+        novaJanela.onload = () => novaJanela.print();
       }
-    });
+    } catch (err) {
+      console.error("Erro ao gerar declaração:", err);
+      alert("Erro ao gerar a declaração.");
+    }
+  });
+}
   </script>
 </body>
 </html>
